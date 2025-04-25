@@ -1,0 +1,13 @@
+wheel
+setuptools
+dotenv
+fastapi[standard]
+Sanic
+hypercorn
+pyjwt
+cryptography
+pyaml
+passlib[bcrypt]
+motor
+pymongo
+requests
