@@ -48,6 +48,18 @@ class CertManger:
           san = x509.SubjectAlternativeName([x509.IPAddress(ipaddress.IPv4Address(n) if "." in n else ipaddress.IPv6Address(n)) if ("." in n and len(n.split(".")) == 4) or ":" in n else x509.DNSName(n) for n in alt_names])
           builder = builder.add_extension(san,critical=False)
 
+
+        subject_key_identifier = x509.SubjectKeyIdentifier.from_public_key(pkey.public_key())
+        
+        # Authority Key Identifier links this certificate to the issuer's public key (self-signed in this case)
+        authority_key_identifier = x509.AuthorityKeyIdentifier(
+            key_identifier=subject_key_identifier.digest,
+            authority_cert_issuer=[x509.DirectoryName(builder._subject_name)],
+            authority_cert_serial_number=serialNo
+        )
+
+        builder = builder.add_extension(authority_key_identifier, critical=False)
+
         # Sign the certificate
         ca = builder.sign(
             private_key=pkey, algorithm=hashes.SHA256(),
@@ -96,6 +108,18 @@ class CertManger:
         if len(alt_names):
           names = [x509.IPAddress(ipaddress.IPv4Address(n) if "." in n else ipaddress.IPv6Address(n)) if ("." in n and len(n.split(".")) == 4) or ":" in n else x509.DNSName(n) for n in alt_names]
           builder = builder.add_extension(x509.SubjectAlternativeName(names),critical=False)
+
+
+        subject_key_identifier = x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key())
+        
+        # Authority Key Identifier links this certificate to the issuer's public key (self-signed in this case)
+        authority_key_identifier = x509.AuthorityKeyIdentifier(
+            key_identifier=subject_key_identifier.digest,
+            authority_cert_issuer=[x509.DirectoryName(builder._subject_name)],
+            authority_cert_serial_number=serialNo
+        )
+
+        builder = builder.add_extension(authority_key_identifier, critical=False)
 
         certsing = builder.sign(
             private_key=ca_key, algorithm=hashes.SHA256(),
