@@ -1,6 +1,6 @@
 from lib import CertManger
 from fastapi import Request, Response, WebSocket
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, APIWebSocketRoute
 from json import dumps
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -19,6 +19,10 @@ class DelRoute(BaseModel):
     path:str
     methods:list[str] = ['GET']
 
+class Plugin(BaseModel):
+    name:str
+    code:str
+    language:str = 'js'
 
 cm = CertManger()
 
@@ -48,9 +52,10 @@ def add(route:Route):
         return Response(resp.text, resp.status_code,resp.headers,resp.headers['content-type'])
     app.add_api_route(route.path,runner,methods=route.methods,name=route.name,tags=[route.name])
     print(i, len(app.router.routes))
-    app.router.routes = [r for r in app.router.routes if r.include_in_schema]
-    app.openapi_schema = None
-    app.setup()
+    if i > len(app.router.routes):
+        app.router.routes = [r for r in app.router.routes if (isinstance(r, APIRoute) and r.include_in_schema) or isinstance(r,APIWebSocketRoute)]
+        app.openapi_schema = None
+        app.setup()
     return {'message':f'{route.path} added'}
 
 
@@ -65,15 +70,58 @@ def delete(delroute:DelRoute):
         app.setup()
         return {'message':f'{delroute.path} Removed'}
     else:
-        app.router.routes = [r for r in app.router.routes if r.include_in_schema]
+        app.router.routes = [r for r in app.router.routes if (isinstance(r, APIRoute) and r.include_in_schema) or isinstance(r,APIWebSocketRoute)]
         app.openapi_schema = None
         app.setup()
         return JSONResponse({'message': f'{delroute.path} unable to remove'},500)
+
+from py_mini_racer import py_mini_racer
+ctx = py_mini_racer.MiniRacer()
+
+
+def js_plugin(request,code:str,name:str):
+    code = "function "+name+"_plugin(vrag){\n" + code + "\nvrag.this=this;\nreturn vrag}"
+    ctx.eval(code)
+    return ctx.call(f"{name}_plugin",request)
+
+
+try:
+    import lupa.luajit21 as lupa
+except ImportError:
+    try:
+        import lupa.lua54 as lupa
+    except ImportError:
+        try:
+            import lupa.lua53 as lupa
+        except ImportError:
+            import lupa
+
+print(f"Using {lupa.LuaRuntime().lua_implementation} (compiled with {lupa.LUA_VERSION})")
+
+lctx = lupa.LuaRuntime(unpack_returned_tuples=True)
+
+def lua_plugin(reqs,code,name):
+    code = "function "+name+"_plugin(vrag)\n    "+code+"\n    return vrag\nend"
+    lctx.execute(code,name=name)
+    #print(g)
+    return lctx.globals().name(reqs)
     
 
 @app.get('/routes',tags=['APIM'],name='Get All Routes',)
 async def allroutes():
     return [ {"path": r.path , "methods": r.methods ,"name": r.name, "schema": r.include_in_schema} for r in app.router.routes]
+
+
+@app.post('/test/js/plugin',name='Test Js Plugin',tags=['APIM'])
+def test_js_plugin(code:Plugin, req:Request = None):
+    reqs = {'method':req.method, 'path':req.url.path, 'headers':dict(req.headers)}
+    #print(reqs)
+    return {"output": js_plugin(reqs,code.code,code.name)}
+
+@app.post('/test/lua/plugin',name='Test Lua Plugin',tags=['APIM'])
+def test_lua_plugin(code:Plugin, req:Request = None):
+    reqs = {'method':req.method, 'path':req.url.path, 'headers':dict(req.headers)}
+    return {"output": lua_plugin(reqs,code.code,code.name)}
 
 
 @app.websocket("/ws")

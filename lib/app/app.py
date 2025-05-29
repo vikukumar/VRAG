@@ -8,8 +8,6 @@ class ASGILatencyWrapper:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        print(scope,receive)
-        print("ssl ",scope.get('ssl_cert', None) )
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return

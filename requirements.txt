@@ -11,3 +11,6 @@ passlib[bcrypt]
 motor
 pymongo
 requests
+pymonkey
+PyExecJS
+py-mini-racer
